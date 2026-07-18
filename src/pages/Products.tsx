@@ -1,37 +1,43 @@
 import React, { useState, useEffect } from 'react';
 import { ArrowRight, Plus, Edit, Trash2, X, Barcode, Search } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { Product, Category, STORAGE_KEYS, getData, saveData, updateData, deleteData, getAppSettings } from '../utils/storage';
+import { Product, Category, STORAGE_KEYS, getData, saveData, updateData, deleteData, getAppSettings, generateUUID } from '../utils/storage';
 
 export default function Products() {
   const navigate = useNavigate();
-  const { currency, lowStockThreshold } = getAppSettings();
+  const [currency, setCurrency] = useState('جنيه سوداني');
+  const [lowStockThreshold, setLowStockThreshold] = useState(5);
   
   const [products, setProducts] = useState<Product[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   
-  // Search and Sort State
   const [searchQuery, setSearchQuery] = useState('');
   const [sortBy, setSortBy] = useState('newest');
 
-  // Form State
   const [name, setName] = useState('');
   const [categoryId, setCategoryId] = useState('');
-  const [price, setPrice] = useState<number | ''>(''); // Selling Price
-  const [purchasePrice, setPurchasePrice] = useState<number | ''>(''); // Purchase Price
+  const [price, setPrice] = useState<number | ''>('');
+  const [purchasePrice, setPurchasePrice] = useState<number | ''>('');
   const [quantity, setQuantity] = useState<number | ''>('');
   const [barcode, setBarcode] = useState('');
 
-  // Load data on mount
   useEffect(() => {
+    getAppSettings().then(settings => {
+      setCurrency(settings.currency);
+      setLowStockThreshold(settings.lowStockThreshold);
+    });
     loadData();
   }, []);
 
-  const loadData = () => {
-    setProducts(getData<Product>(STORAGE_KEYS.PRODUCTS));
-    setCategories(getData<Category>(STORAGE_KEYS.CATEGORIES));
+  const loadData = async () => {
+    const [prods, cats] = await Promise.all([
+      getData<Product>(STORAGE_KEYS.PRODUCTS),
+      getData<Category>(STORAGE_KEYS.CATEGORIES)
+    ]);
+    setProducts(prods);
+    setCategories(cats);
   };
 
   const handleOpenModal = (product?: Product) => {
@@ -60,7 +66,7 @@ export default function Products() {
     setEditingId(null);
   };
 
-  const handleSave = (e: React.FormEvent) => {
+  const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim() || !categoryId || price === '' || purchasePrice === '' || quantity === '') return;
 
@@ -74,24 +80,24 @@ export default function Products() {
     };
 
     if (editingId) {
-      updateData<Product>(STORAGE_KEYS.PRODUCTS, editingId, productData);
+      await updateData<Product>(STORAGE_KEYS.PRODUCTS, editingId, productData);
     } else {
       const newProduct: Product = {
         ...productData,
-        id: Date.now().toString(),
+        id: generateUUID(),
         createdAt: new Date().toISOString(),
       };
-      saveData<Product>(STORAGE_KEYS.PRODUCTS, newProduct);
+      await saveData<Product>(STORAGE_KEYS.PRODUCTS, newProduct);
     }
     
-    loadData();
+    await loadData();
     handleCloseModal();
   };
 
-  const handleDelete = (id: string) => {
+  const handleDelete = async (id: string) => {
     if (window.confirm('هل أنت متأكد من حذف هذا المنتج؟')) {
-      deleteData<Product>(STORAGE_KEYS.PRODUCTS, id);
-      loadData();
+      await deleteData<Product>(STORAGE_KEYS.PRODUCTS, id);
+      await loadData();
     }
   };
 
@@ -100,7 +106,6 @@ export default function Products() {
     return cat ? cat.name : 'صنف غير معروف';
   };
 
-  // Filter and Sort Logic
   const filteredAndSortedProducts = products
     .filter(p => 
       p.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
@@ -118,7 +123,6 @@ export default function Products() {
     <div className="min-h-screen bg-gray-200 flex justify-center items-center p-0 sm:p-4">
       <div className="w-full h-[100dvh] sm:h-[850px] max-w-[400px] bg-gray-50 sm:rounded-3xl sm:shadow-2xl overflow-hidden flex flex-col relative border-x-0 sm:border-x-[8px] sm:border-y-[16px] border-gray-900">
         
-        {/* Header */}
         <header className="bg-[#115e59] text-white px-4 py-4 flex items-center justify-between shadow-md z-10">
           <button onClick={() => navigate('/')} className="p-1 hover:bg-white/10 rounded-lg transition-colors" aria-label="Back">
             <ArrowRight size={28} />
@@ -129,10 +133,7 @@ export default function Products() {
           </button>
         </header>
 
-        {/* Main Content */}
         <main className="flex-1 overflow-y-auto p-4">
-          
-          {/* Search and Sort Controls */}
           {products.length > 0 && (
             <div className="flex gap-2 mb-4">
               <div className="relative flex-1">
@@ -207,7 +208,6 @@ export default function Products() {
           )}
         </main>
 
-        {/* Modal Overlay */}
         {isModalOpen && (
           <div className="absolute inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
             <div className="bg-white rounded-2xl w-full max-w-sm shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-200">
@@ -252,7 +252,6 @@ export default function Products() {
                   </select>
                 </div>
 
-                {/* Row 1: Prices */}
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label className="block text-sm font-semibold text-gray-700 mb-1">سعر الشراء <span className="text-red-500">*</span></label>
@@ -280,7 +279,6 @@ export default function Products() {
                   </div>
                 </div>
 
-                {/* Row 2: Quantity & Barcode */}
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label className="block text-sm font-semibold text-gray-700 mb-1">الكمية <span className="text-red-500">*</span></label>

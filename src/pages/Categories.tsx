@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { ArrowRight, Plus, Edit, Trash2, X } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { Category, STORAGE_KEYS, getData, saveData, updateData, deleteData } from '../utils/storage';
+import { Category, STORAGE_KEYS, getData, saveData, updateData, deleteData, generateUUID } from '../utils/storage';
 
 export default function Categories() {
   const navigate = useNavigate();
@@ -9,17 +9,15 @@ export default function Categories() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   
-  // Form State
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
 
-  // Load data on mount
   useEffect(() => {
     loadCategories();
   }, []);
 
-  const loadCategories = () => {
-    const data = getData<Category>(STORAGE_KEYS.CATEGORIES);
+  const loadCategories = async () => {
+    const data = await getData<Category>(STORAGE_KEYS.CATEGORIES);
     setCategories(data);
   };
 
@@ -43,30 +41,30 @@ export default function Categories() {
     setDescription('');
   };
 
-  const handleSave = (e: React.FormEvent) => {
+  const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim()) return;
 
     if (editingId) {
-      updateData<Category>(STORAGE_KEYS.CATEGORIES, editingId, { name, description });
+      await updateData<Category>(STORAGE_KEYS.CATEGORIES, editingId, { name, description });
     } else {
       const newCategory: Category = {
-        id: Date.now().toString(),
+        id: generateUUID(),
         name,
         description,
         createdAt: new Date().toISOString(),
       };
-      saveData<Category>(STORAGE_KEYS.CATEGORIES, newCategory);
+      await saveData<Category>(STORAGE_KEYS.CATEGORIES, newCategory);
     }
     
-    loadCategories();
+    await loadCategories();
     handleCloseModal();
   };
 
-  const handleDelete = (id: string) => {
+  const handleDelete = async (id: string) => {
     if (window.confirm('هل أنت متأكد من حذف هذا الصنف؟')) {
-      deleteData<Category>(STORAGE_KEYS.CATEGORIES, id);
-      loadCategories();
+      await deleteData<Category>(STORAGE_KEYS.CATEGORIES, id);
+      await loadCategories();
     }
   };
 
@@ -74,7 +72,6 @@ export default function Categories() {
     <div className="min-h-screen bg-gray-200 flex justify-center items-center p-0 sm:p-4">
       <div className="w-full h-[100dvh] sm:h-[850px] max-w-[400px] bg-gray-50 sm:rounded-3xl sm:shadow-2xl overflow-hidden flex flex-col relative border-x-0 sm:border-x-[8px] sm:border-y-[16px] border-gray-900">
         
-        {/* Header */}
         <header className="bg-[#115e59] text-white px-4 py-4 flex items-center justify-between shadow-md z-10">
           <button onClick={() => navigate('/')} className="p-1 hover:bg-white/10 rounded-lg transition-colors" aria-label="Back">
             <ArrowRight size={28} />
@@ -85,7 +82,6 @@ export default function Categories() {
           </button>
         </header>
 
-        {/* Main Content */}
         <main className="flex-1 overflow-y-auto p-4">
           {categories.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-full text-gray-400">
@@ -115,7 +111,6 @@ export default function Categories() {
           )}
         </main>
 
-        {/* Modal Overlay */}
         {isModalOpen && (
           <div className="absolute inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
             <div className="bg-white rounded-2xl w-full max-w-sm shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-200">

@@ -13,6 +13,7 @@ import InventoryReports from './pages/InventoryReports';
 import FinalReports from './pages/FinalReports';
 import Settings from './pages/Settings';
 import Calculator from './pages/Calculator';
+import Login from './pages/Login'; // Changed from Placeholder to Login
 
 function App() {
   return (
@@ -35,6 +36,9 @@ function App() {
       <Route path="/final-reports" element={<FinalReports />} />
       <Route path="/settings" element={<Settings />} />
       <Route path="/calculator" element={<Calculator />} />
+      
+      {/* Auth Routes */}
+      <Route path="/login" element={<Login />} />
     </Routes>
   );
 }

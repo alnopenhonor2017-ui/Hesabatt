@@ -5,20 +5,28 @@ import { Sale, Purchase, Expense, STORAGE_KEYS, getData, getAppSettings } from '
 
 export default function FinalReports() {
   const navigate = useNavigate();
-  const { currency } = getAppSettings();
+  const [currency, setCurrency] = useState('جنيه سوداني');
   
   const [totalSales, setTotalSales] = useState(0);
   const [totalPurchases, setTotalPurchases] = useState(0);
   const [totalExpenses, setTotalExpenses] = useState(0);
 
   useEffect(() => {
-    const sales = getData<Sale>(STORAGE_KEYS.SALES);
-    const purchases = getData<Purchase>(STORAGE_KEYS.PURCHASES);
-    const expenses = getData<Expense>(STORAGE_KEYS.EXPENSES);
+    getAppSettings().then(s => setCurrency(s.currency));
+    
+    const loadData = async () => {
+      const [sales, purchases, expenses] = await Promise.all([
+        getData<Sale>(STORAGE_KEYS.SALES),
+        getData<Purchase>(STORAGE_KEYS.PURCHASES),
+        getData<Expense>(STORAGE_KEYS.EXPENSES)
+      ]);
 
-    setTotalSales(sales.reduce((sum, sale) => sum + sale.totalAmount, 0));
-    setTotalPurchases(purchases.reduce((sum, purchase) => sum + purchase.totalCost, 0));
-    setTotalExpenses(expenses.reduce((sum, expense) => sum + expense.amount, 0));
+      setTotalSales(sales.reduce((sum, sale) => sum + sale.totalAmount, 0));
+      setTotalPurchases(purchases.reduce((sum, purchase) => sum + purchase.totalCost, 0));
+      setTotalExpenses(expenses.reduce((sum, expense) => sum + expense.amount, 0));
+    };
+    
+    loadData();
   }, []);
 
   const netProfit = totalSales - totalPurchases - totalExpenses;
@@ -37,7 +45,6 @@ export default function FinalReports() {
 
         <main className="flex-1 overflow-y-auto p-4 space-y-4">
           
-          {/* Net Profit Card */}
           <div className={`rounded-2xl p-6 text-white shadow-lg relative overflow-hidden ${netProfit >= 0 ? 'bg-gradient-to-br from-[#115e59] to-[#0f4c48]' : 'bg-gradient-to-br from-red-600 to-red-800'}`}>
             <div className="flex items-center gap-3 mb-2 relative z-10">
               <BarChart3 size={24} className="text-white/80" />
@@ -48,7 +55,6 @@ export default function FinalReports() {
             </div>
           </div>
 
-          {/* Breakdown Cards */}
           <div className="grid grid-cols-2 gap-4">
             <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex flex-col items-center justify-center text-center gap-2">
               <div className="w-10 h-10 rounded-full bg-green-100 flex items-center justify-center text-green-600">

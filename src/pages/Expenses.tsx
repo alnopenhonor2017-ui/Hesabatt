@@ -1,25 +1,26 @@
 import React, { useState, useEffect } from 'react';
 import { ArrowRight, Plus, Trash2, X } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { Expense, STORAGE_KEYS, getData, saveData, deleteData, getAppSettings } from '../utils/storage';
+import { Expense, STORAGE_KEYS, getData, saveData, deleteData, getAppSettings, generateUUID } from '../utils/storage';
 
 export default function Expenses() {
   const navigate = useNavigate();
-  const { currency } = getAppSettings();
+  const [currency, setCurrency] = useState('جنيه سوداني');
   
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   
-  // Form State
   const [description, setDescription] = useState('');
   const [amount, setAmount] = useState<number | ''>('');
 
   useEffect(() => {
+    getAppSettings().then(s => setCurrency(s.currency));
     loadData();
   }, []);
 
-  const loadData = () => {
-    setExpenses(getData<Expense>(STORAGE_KEYS.EXPENSES));
+  const loadData = async () => {
+    const data = await getData<Expense>(STORAGE_KEYS.EXPENSES);
+    setExpenses(data);
   };
 
   const handleOpenModal = () => {
@@ -32,26 +33,26 @@ export default function Expenses() {
     setIsModalOpen(false);
   };
 
-  const handleSave = (e: React.FormEvent) => {
+  const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!description.trim() || amount === '' || Number(amount) <= 0) return;
 
     const newExpense: Expense = {
-      id: Date.now().toString(),
+      id: generateUUID(),
       description,
       amount: Number(amount),
       date: new Date().toISOString(),
     };
 
-    saveData<Expense>(STORAGE_KEYS.EXPENSES, newExpense);
-    loadData();
+    await saveData<Expense>(STORAGE_KEYS.EXPENSES, newExpense);
+    await loadData();
     handleCloseModal();
   };
 
-  const handleDelete = (id: string) => {
+  const handleDelete = async (id: string) => {
     if (window.confirm('هل أنت متأكد من حذف هذا المصروف؟')) {
-      deleteData<Expense>(STORAGE_KEYS.EXPENSES, id);
-      loadData();
+      await deleteData<Expense>(STORAGE_KEYS.EXPENSES, id);
+      await loadData();
     }
   };
 

@@ -1,4 +1,4 @@
-// src/utils/storage.ts
+import { supabase } from '../lib/supabase';
 
 // ==========================================
 // 1. Data Schemas (TypeScript Interfaces)
@@ -15,9 +15,9 @@ export interface Product {
   id: string;
   categoryId: string;
   name: string;
-  price: number; // Selling Price
-  purchasePrice?: number; // New: Purchase Price
-  barcode?: string; // New: Barcode
+  price: number;
+  purchasePrice?: number;
+  barcode?: string;
   quantity: number;
   createdAt: string;
 }
@@ -31,9 +31,9 @@ export interface CartItem {
 
 export interface Sale {
   id: string;
-  productId?: string; // Legacy support
-  quantity?: number; // Legacy support
-  items?: CartItem[]; // New Cart System
+  productId?: string;
+  quantity?: number;
+  items?: CartItem[];
   totalAmount: number;
   date: string;
   clientName?: string;
@@ -83,7 +83,6 @@ export interface AppSettings {
   banks: Bank[];
 }
 
-// Storage Keys Constants to prevent typos
 export const STORAGE_KEYS = {
   CATEGORIES: 'categories',
   PRODUCTS: 'products',
@@ -95,83 +94,163 @@ export const STORAGE_KEYS = {
   SETTINGS: 'app_settings',
 };
 
-// Default Settings
+export const generateUUID = () => {
+  if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+    return crypto.randomUUID();
+  }
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+    const r = Math.random() * 16 | 0, v = c === 'x' ? r : (r & 0x3 | 0x8);
+    return v.toString(16);
+  });
+};
+
 export const DEFAULT_SETTINGS: AppSettings = {
   currency: 'جنيه سوداني',
   lowStockThreshold: 5,
   banks: [
-    { id: '1', name: 'مصرف الراجحي' },
-    { id: '2', name: 'البنك الأهلي السعودي' },
-    { id: '3', name: 'بنك الرياض' },
-    { id: '4', name: 'بنك الإنماء' },
-    { id: '5', name: 'بنك البلاد' },
-    { id: '6', name: 'البنك الأول' },
-    { id: '7', name: 'أخرى' }
+    { id: generateUUID(), name: 'مصرف الراجحي' },
+    { id: generateUUID(), name: 'البنك الأهلي السعودي' },
+    { id: generateUUID(), name: 'بنك الرياض' },
+    { id: generateUUID(), name: 'بنك الإنماء' },
+    { id: generateUUID(), name: 'بنك البلاد' },
+    { id: generateUUID(), name: 'البنك الأول' },
+    { id: generateUUID(), name: 'أخرى' }
   ]
 };
 
 // ==========================================
-// 2. Global CRUD Functions for LocalStorage
+// 2. Helpers for Case Conversion
 // ==========================================
 
-export const getData = <T>(key: string): T[] => {
-  try {
-    const data = localStorage.getItem(key);
-    return data ? JSON.parse(data) : [];
-  } catch (error) {
-    console.error(`Error reading data for key: ${key}`, error);
+const toSnakeCase = (obj: any) => {
+  if (!obj) return obj;
+  const result: any = { ...obj };
+  const map: Record<string, string> = {
+    categoryId: 'category_id',
+    purchasePrice: 'purchase_price',
+    productId: 'product_id',
+    supplierId: 'supplier_id',
+    totalCost: 'total_cost',
+    totalAmount: 'total_amount',
+    clientName: 'client_name',
+    clientPhone: 'client_phone',
+    paymentMethod: 'payment_method',
+    bankName: 'bank_name',
+    lowStockThreshold: 'low_stock_threshold',
+    createdAt: 'created_at'
+  };
+  for (const [camel, snake] of Object.entries(map)) {
+    if (result[camel] !== undefined) {
+      result[snake] = result[camel];
+      delete result[camel];
+    }
+  }
+  return result;
+};
+
+const toCamelCase = (obj: any) => {
+  if (!obj) return obj;
+  const result: any = { ...obj };
+  const map: Record<string, string> = {
+    category_id: 'categoryId',
+    purchase_price: 'purchasePrice',
+    product_id: 'productId',
+    supplier_id: 'supplierId',
+    total_cost: 'totalCost',
+    total_amount: 'totalAmount',
+    client_name: 'clientName',
+    client_phone: 'clientPhone',
+    payment_method: 'paymentMethod',
+    bank_name: 'bankName',
+    low_stock_threshold: 'lowStockThreshold',
+    created_at: 'createdAt'
+  };
+  for (const [snake, camel] of Object.entries(map)) {
+    if (result[snake] !== undefined) {
+      result[camel] = result[snake];
+      delete result[snake];
+    }
+  }
+  return result;
+};
+
+// ==========================================
+// 3. Supabase Async CRUD Functions
+// ==========================================
+
+export const getData = async <T>(key: string): Promise<T[]> => {
+  const { data, error } = await supabase.from(key).select('*');
+  if (error) {
+    console.error(`Error fetching ${key}:`, error);
     return [];
   }
-};
 
-export const saveData = <T extends { id: string }>(key: string, item: T): void => {
-  try {
-    const currentData = getData<T>(key);
-    currentData.push(item);
-    localStorage.setItem(key, JSON.stringify(currentData));
-  } catch (error) {
-    console.error(`Error saving data for key: ${key}`, error);
+  if (key === STORAGE_KEYS.SALES) {
+    const { data: itemsData } = await supabase.from('sale_items').select('*');
+    return data.map(sale => {
+      const saleItems = itemsData?.filter(i => i.sale_id === sale.id) || [];
+      return toCamelCase({ ...sale, items: saleItems.map(toCamelCase) });
+    }) as any;
   }
+
+  return data.map(toCamelCase) as any;
 };
 
-export const updateData = <T extends { id: string }>(key: string, id: string, updatedFields: Partial<T>): void => {
-  try {
-    const currentData = getData<T>(key);
-    const index = currentData.findIndex(item => item.id === id);
+export const saveData = async <T extends { id: string }>(key: string, item: T): Promise<void> => {
+  const snakeItem = toSnakeCase(item);
+  
+  if (key === STORAGE_KEYS.SALES) {
+    const items = snakeItem.items;
+    delete snakeItem.items;
     
-    if (index !== -1) {
-      currentData[index] = { ...currentData[index], ...updatedFields };
-      localStorage.setItem(key, JSON.stringify(currentData));
+    const { error } = await supabase.from(key).insert(snakeItem);
+    if (error) console.error(`Error saving ${key}:`, error);
+    
+    if (items && items.length > 0) {
+      const saleItems = items.map((i: any) => ({
+        ...toSnakeCase(i),
+        sale_id: item.id,
+        id: generateUUID()
+      }));
+      await supabase.from('sale_items').insert(saleItems);
     }
-  } catch (error) {
-    console.error(`Error updating data for key: ${key}`, error);
+  } else {
+    const { error } = await supabase.from(key).insert(snakeItem);
+    if (error) console.error(`Error saving ${key}:`, error);
   }
 };
 
-export const deleteData = <T extends { id: string }>(key: string, id: string): void => {
-  try {
-    const currentData = getData<T>(key);
-    const filteredData = currentData.filter(item => item.id !== id);
-    localStorage.setItem(key, JSON.stringify(filteredData));
-  } catch (error) {
-    console.error(`Error deleting data for key: ${key}`, error);
-  }
+export const updateData = async <T extends { id: string }>(key: string, id: string, updatedFields: Partial<T>): Promise<void> => {
+  const snakeFields = toSnakeCase(updatedFields);
+  const { error } = await supabase.from(key).update(snakeFields).eq('id', id);
+  if (error) console.error(`Error updating ${key}:`, error);
 };
 
-// Settings Functions
-export const getAppSettings = (): AppSettings => {
-  try {
-    const data = localStorage.getItem(STORAGE_KEYS.SETTINGS);
-    return data ? { ...DEFAULT_SETTINGS, ...JSON.parse(data) } : DEFAULT_SETTINGS;
-  } catch {
-    return DEFAULT_SETTINGS;
-  }
+export const deleteData = async <T extends { id: string }>(key: string, id: string): Promise<void> => {
+  const { error } = await supabase.from(key).delete().eq('id', id);
+  if (error) console.error(`Error deleting ${key}:`, error);
 };
 
-export const saveAppSettings = (settings: AppSettings): void => {
-  try {
-    localStorage.setItem(STORAGE_KEYS.SETTINGS, JSON.stringify(settings));
-  } catch (error) {
-    console.error('Error saving settings', error);
+export const getAppSettings = async (): Promise<AppSettings> => {
+  const { data: settingsData } = await supabase.from('app_settings').select('*').eq('id', 1).single();
+  const { data: banksData } = await supabase.from('banks').select('*');
+  
+  const settings = settingsData ? toCamelCase(settingsData) : DEFAULT_SETTINGS;
+  return {
+    ...DEFAULT_SETTINGS,
+    ...settings,
+    banks: banksData && banksData.length > 0 ? banksData.map(toCamelCase) : DEFAULT_SETTINGS.banks
+  };
+};
+
+export const saveAppSettings = async (settings: AppSettings): Promise<void> => {
+  const { banks, ...rest } = settings;
+  const snakeSettings = toSnakeCase(rest);
+  
+  await supabase.from('app_settings').upsert({ id: 1, ...snakeSettings });
+  
+  await supabase.from('banks').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+  if (banks.length > 0) {
+    await supabase.from('banks').insert(banks.map(b => toSnakeCase(b)));
   }
 };

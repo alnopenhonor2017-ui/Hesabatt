@@ -1,28 +1,32 @@
 import React, { useState, useEffect } from 'react';
 import { ArrowRight, Plus, Trash2, X } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { Purchase, Product, STORAGE_KEYS, getData, saveData, updateData, deleteData, getAppSettings } from '../utils/storage';
+import { Purchase, Product, STORAGE_KEYS, getData, saveData, updateData, deleteData, getAppSettings, generateUUID } from '../utils/storage';
 
 export default function Purchases() {
   const navigate = useNavigate();
-  const { currency } = getAppSettings();
+  const [currency, setCurrency] = useState('جنيه سوداني');
   
   const [purchases, setPurchases] = useState<Purchase[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   
-  // Form State
   const [productId, setProductId] = useState('');
   const [quantity, setQuantity] = useState<number | ''>('');
   const [totalCost, setTotalCost] = useState<number | ''>('');
 
   useEffect(() => {
+    getAppSettings().then(s => setCurrency(s.currency));
     loadData();
   }, []);
 
-  const loadData = () => {
-    setPurchases(getData<Purchase>(STORAGE_KEYS.PURCHASES));
-    setProducts(getData<Product>(STORAGE_KEYS.PRODUCTS));
+  const loadData = async () => {
+    const [pur, prod] = await Promise.all([
+      getData<Purchase>(STORAGE_KEYS.PURCHASES),
+      getData<Product>(STORAGE_KEYS.PRODUCTS)
+    ]);
+    setPurchases(pur);
+    setProducts(prod);
   };
 
   const handleOpenModal = () => {
@@ -36,7 +40,7 @@ export default function Purchases() {
     setIsModalOpen(false);
   };
 
-  const handleSave = (e: React.FormEvent) => {
+  const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!productId || quantity === '' || totalCost === '' || Number(quantity) <= 0) return;
 
@@ -47,33 +51,29 @@ export default function Purchases() {
     const cost = Number(totalCost);
 
     const newPurchase: Purchase = {
-      id: Date.now().toString(),
+      id: generateUUID(),
       productId,
-      supplierId: 'general', // Placeholder for future supplier feature
+      supplierId: 'general',
       quantity: qty,
       totalCost: cost,
       date: new Date().toISOString(),
     };
 
-    // Save Purchase
-    saveData<Purchase>(STORAGE_KEYS.PURCHASES, newPurchase);
+    await saveData<Purchase>(STORAGE_KEYS.PURCHASES, newPurchase);
+    await updateData<Product>(STORAGE_KEYS.PRODUCTS, productId, { quantity: product.quantity + qty });
     
-    // Add to Inventory
-    updateData<Product>(STORAGE_KEYS.PRODUCTS, productId, { quantity: product.quantity + qty });
-    
-    loadData();
+    await loadData();
     handleCloseModal();
   };
 
-  const handleDelete = (purchase: Purchase) => {
+  const handleDelete = async (purchase: Purchase) => {
     if (window.confirm('هل أنت متأكد من حذف عملية الشراء؟ (سيتم خصم الكمية من المخزن)')) {
       const product = products.find(p => p.id === purchase.productId);
       if (product) {
-        // Remove from Inventory
-        updateData<Product>(STORAGE_KEYS.PRODUCTS, product.id, { quantity: Math.max(0, product.quantity - purchase.quantity) });
+        await updateData<Product>(STORAGE_KEYS.PRODUCTS, product.id, { quantity: Math.max(0, product.quantity - purchase.quantity) });
       }
-      deleteData<Purchase>(STORAGE_KEYS.PURCHASES, purchase.id);
-      loadData();
+      await deleteData<Purchase>(STORAGE_KEYS.PURCHASES, purchase.id);
+      await loadData();
     }
   };
 

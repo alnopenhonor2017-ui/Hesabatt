@@ -5,20 +5,28 @@ import { Sale, Purchase, Expense, STORAGE_KEYS, getData, getAppSettings } from '
 
 export default function CashBox() {
   const navigate = useNavigate();
-  const { currency } = getAppSettings();
+  const [currency, setCurrency] = useState('جنيه سوداني');
   
   const [totalSales, setTotalSales] = useState(0);
   const [totalPurchases, setTotalPurchases] = useState(0);
   const [totalExpenses, setTotalExpenses] = useState(0);
 
   useEffect(() => {
-    const sales = getData<Sale>(STORAGE_KEYS.SALES);
-    const purchases = getData<Purchase>(STORAGE_KEYS.PURCHASES);
-    const expenses = getData<Expense>(STORAGE_KEYS.EXPENSES);
+    getAppSettings().then(s => setCurrency(s.currency));
+    
+    const loadData = async () => {
+      const [sales, purchases, expenses] = await Promise.all([
+        getData<Sale>(STORAGE_KEYS.SALES),
+        getData<Purchase>(STORAGE_KEYS.PURCHASES),
+        getData<Expense>(STORAGE_KEYS.EXPENSES)
+      ]);
 
-    setTotalSales(sales.reduce((sum, sale) => sum + sale.totalAmount, 0));
-    setTotalPurchases(purchases.reduce((sum, purchase) => sum + purchase.totalCost, 0));
-    setTotalExpenses(expenses.reduce((sum, expense) => sum + expense.amount, 0));
+      setTotalSales(sales.reduce((sum, sale) => sum + sale.totalAmount, 0));
+      setTotalPurchases(purchases.reduce((sum, purchase) => sum + purchase.totalCost, 0));
+      setTotalExpenses(expenses.reduce((sum, expense) => sum + expense.amount, 0));
+    };
+    
+    loadData();
   }, []);
 
   const currentBalance = totalSales - totalPurchases - totalExpenses;
@@ -32,12 +40,11 @@ export default function CashBox() {
             <ArrowRight size={28} />
           </button>
           <h1 className="text-lg font-bold flex-1 text-center tracking-wide">الصندوق</h1>
-          <div className="w-8"></div> {/* Placeholder to balance the header */}
+          <div className="w-8"></div>
         </header>
 
         <main className="flex-1 overflow-y-auto p-5">
           
-          {/* Main Balance Card */}
           <div className="bg-gradient-to-br from-[#115e59] to-[#0f4c48] rounded-2xl p-6 text-white shadow-lg mb-6 relative overflow-hidden">
             <div className="absolute top-0 left-0 w-32 h-32 bg-white opacity-5 rounded-full -translate-x-10 -translate-y-10"></div>
             <div className="absolute bottom-0 right-0 w-24 h-24 bg-white opacity-5 rounded-full translate-x-8 translate-y-8"></div>
@@ -51,10 +58,8 @@ export default function CashBox() {
             </div>
           </div>
 
-          {/* Summary Grid */}
           <div className="grid grid-cols-1 gap-4">
             
-            {/* Sales Summary */}
             <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex items-center gap-4">
               <div className="w-12 h-12 rounded-full bg-green-100 flex items-center justify-center text-green-600">
                 <TrendingUp size={24} />
@@ -65,7 +70,6 @@ export default function CashBox() {
               </div>
             </div>
 
-            {/* Purchases Summary */}
             <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex items-center gap-4">
               <div className="w-12 h-12 rounded-full bg-red-100 flex items-center justify-center text-red-600">
                 <TrendingDown size={24} />
@@ -76,7 +80,6 @@ export default function CashBox() {
               </div>
             </div>
 
-            {/* Expenses Summary */}
             <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex items-center gap-4">
               <div className="w-12 h-12 rounded-full bg-orange-100 flex items-center justify-center text-orange-600">
                 <Receipt size={24} />

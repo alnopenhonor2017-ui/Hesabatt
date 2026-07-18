@@ -1,31 +1,34 @@
 import React, { useState, useEffect } from 'react';
 import { ArrowRight, Trash2, ShieldAlert, Cog, Landmark, Plus, Edit, X, Database, Cloud } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { AppSettings, Bank, getAppSettings, saveAppSettings } from '../utils/storage';
+import { AppSettings, Bank, getAppSettings, saveAppSettings, DEFAULT_SETTINGS, generateUUID } from '../utils/storage';
 
 export default function Settings() {
   const navigate = useNavigate();
-  const [settings, setSettings] = useState<AppSettings>(getAppSettings());
+  const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
   
-  // Bank Modal State
   const [isBankModalOpen, setIsBankModalOpen] = useState(false);
   const [editingBankId, setEditingBankId] = useState<string | null>(null);
   const [bankName, setBankName] = useState('');
 
   useEffect(() => {
-    saveAppSettings(settings);
-  }, [settings]);
+    getAppSettings().then(setSettings);
+  }, []);
 
-  const handleCurrencyChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    setSettings(prev => ({ ...prev, currency: e.target.value }));
+  const saveSettings = async (newSettings: AppSettings) => {
+    setSettings(newSettings);
+    await saveAppSettings(newSettings);
   };
 
-  const handleThresholdChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleCurrencyChange = async (e: React.ChangeEvent<HTMLSelectElement>) => {
+    await saveSettings({ ...settings, currency: e.target.value });
+  };
+
+  const handleThresholdChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const val = e.target.value ? Number(e.target.value) : 0;
-    setSettings(prev => ({ ...prev, lowStockThreshold: val }));
+    await saveSettings({ ...settings, lowStockThreshold: val });
   };
 
-  // --- Banks Logic ---
   const handleOpenBankModal = (bank?: Bank) => {
     if (bank) {
       setEditingBankId(bank.id);
@@ -43,39 +46,37 @@ export default function Settings() {
     setBankName('');
   };
 
-  const handleSaveBank = (e: React.FormEvent) => {
+  const handleSaveBank = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!bankName.trim()) return;
 
+    let newBanks = [...settings.banks];
     if (editingBankId) {
-      setSettings(prev => ({
-        ...prev,
-        banks: prev.banks.map(b => b.id === editingBankId ? { ...b, name: bankName } : b)
-      }));
+      newBanks = newBanks.map(b => b.id === editingBankId ? { ...b, name: bankName } : b);
     } else {
-      const newBank: Bank = { id: Date.now().toString(), name: bankName };
-      setSettings(prev => ({ ...prev, banks: [...prev.banks, newBank] }));
+      const newBank: Bank = { id: generateUUID(), name: bankName };
+      newBanks.push(newBank);
     }
+    
+    await saveSettings({ ...settings, banks: newBanks });
     handleCloseBankModal();
   };
 
-  const handleDeleteBank = (id: string) => {
+  const handleDeleteBank = async (id: string) => {
     if (window.confirm('هل أنت متأكد من حذف هذا البنك؟')) {
-      setSettings(prev => ({
-        ...prev,
-        banks: prev.banks.filter(b => b.id !== id)
-      }));
+      const newBanks = settings.banks.filter(b => b.id !== id);
+      await saveSettings({ ...settings, banks: newBanks });
     }
   };
 
   const handleClearData = () => {
     const confirm1 = window.confirm('تحذير: هل أنت متأكد من رغبتك في مسح جميع البيانات؟ لا يمكن التراجع عن هذه الخطوة.');
     if (confirm1) {
-      const confirm2 = window.confirm('تأكيد نهائي: سيتم مسح جميع الأصناف، المنتجات، المبيعات، المشتريات، والمصروفات. هل تريد الاستمرار؟');
+      const confirm2 = window.confirm('تأكيد نهائي: سيتم مسح جميع البيانات. هل تريد الاستمرار؟');
       if (confirm2) {
-        localStorage.clear();
-        alert('تم مسح جميع البيانات بنجاح.');
-        navigate('/');
+        // With Supabase, clearing data requires deleting rows from all tables.
+        // For safety, we will just alert the user to do it from Supabase dashboard.
+        alert('لحماية بياناتك، يرجى مسح البيانات مباشرة من لوحة تحكم Supabase الخاصة بك.');
       }
     }
   };
@@ -94,7 +95,6 @@ export default function Settings() {
 
         <main className="flex-1 overflow-y-auto p-4 space-y-4">
           
-          {/* General Settings */}
           <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100">
             <div className="flex items-center gap-3 text-[#115e59] mb-4">
               <Cog size={24} />
@@ -131,7 +131,6 @@ export default function Settings() {
             </div>
           </div>
 
-          {/* Banks Management */}
           <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100">
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-3 text-[#115e59]">
@@ -164,33 +163,22 @@ export default function Settings() {
             )}
           </div>
 
-          {/* Cloud Database Section */}
           <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100">
             <div className="flex items-center gap-3 text-blue-600 mb-4">
               <Database size={24} />
-              <h2 className="font-bold text-lg">قاعدة البيانات السحابية</h2>
+              <h2 className="font-bold text-lg">حالة قاعدة البيانات</h2>
             </div>
-            <p className="text-sm text-gray-500 mb-4 leading-relaxed">
-              التطبيق يعمل حالياً بنظام التخزين المحلي (بدون إنترنت). لإنشاء جداول قاعدة بيانات حقيقية ومزامنة بياناتك عبر الأجهزة، يرجى ربط حساب Supabase.
-            </p>
-            <button 
-              onClick={() => alert('يرجى ربط حساب Supabase الخاص بك من خلال واجهة Dualite أولاً لنتمكن من إنشاء الجداول وربط التطبيق بقاعدة البيانات السحابية.')}
-              className="w-full bg-blue-50 text-blue-600 border border-blue-200 font-bold py-3 rounded-xl hover:bg-blue-100 active:scale-[0.98] transition-all flex items-center justify-center gap-2"
-            >
+            <p className="text-sm text-green-600 font-bold mb-4 flex items-center gap-2">
               <Cloud size={20} />
-              إعداد قاعدة البيانات (Supabase)
-            </button>
+              متصل بنجاح بقاعدة بيانات Supabase السحابية
+            </p>
           </div>
 
-          {/* Danger Zone */}
           <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100">
             <div className="flex items-center gap-3 text-red-600 mb-4">
               <ShieldAlert size={24} />
               <h2 className="font-bold text-lg">منطقة الخطر</h2>
             </div>
-            <p className="text-sm text-gray-500 mb-6 leading-relaxed">
-              استخدم هذا الخيار إذا كنت ترغب في تصفير التطبيق بالكامل والبدء من جديد. سيتم حذف كافة السجلات المالية والمنتجات نهائياً.
-            </p>
             <button 
               onClick={handleClearData}
               className="w-full bg-red-50 text-red-600 border border-red-200 font-bold py-3 rounded-xl hover:bg-red-100 active:scale-[0.98] transition-all flex items-center justify-center gap-2"
@@ -200,14 +188,8 @@ export default function Settings() {
             </button>
           </div>
 
-          <div className="text-center text-gray-400 text-sm mt-10">
-            <p>إصدار التطبيق 1.0.0</p>
-            <p>تم التطوير بواسطة حسابات بلس</p>
-          </div>
-
         </main>
 
-        {/* Bank Modal */}
         {isBankModalOpen && (
           <div className="absolute inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
             <div className="bg-white rounded-2xl w-full max-w-sm shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-200">

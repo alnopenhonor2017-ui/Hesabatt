@@ -1,5 +1,9 @@
 import React, { useState } from 'react';
-import { Menu, Plus } from 'lucide-react';
+import { 
+  Menu, Plus, X, Edit, Users, Truck, Download, Upload, Trash2, 
+  Settings as SettingsIcon, Globe, Printer, Info, Star, Share2, 
+  Shield, HelpCircle, Phone, User 
+} from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
 const screens = [
@@ -23,6 +27,7 @@ const screens = [
 
 export default function Dashboard() {
   const [activeScreen, setActiveScreen] = useState(0);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const navigate = useNavigate();
 
   let touchStartX = 0;
@@ -46,12 +51,30 @@ export default function Dashboard() {
     }
   };
 
+  const SidebarItem = ({ icon, text, onClick, textClassName = "text-gray-700", iconClassName = "text-gray-500" }: any) => (
+    <button
+      onClick={() => {
+        if (onClick) onClick();
+        setIsSidebarOpen(false);
+      }}
+      className="w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-100 transition-colors text-right"
+    >
+      <span className={iconClassName}>{icon}</span>
+      <span className={`font-medium text-sm ${textClassName}`}>{text}</span>
+    </button>
+  );
+
   return (
     <div className="min-h-screen bg-gray-200 flex justify-center items-center p-0 sm:p-4">
       <div className="w-full h-[100dvh] sm:h-[850px] max-w-[400px] bg-gray-50 sm:rounded-3xl sm:shadow-2xl overflow-hidden flex flex-col relative border-x-0 sm:border-x-[8px] sm:border-y-[16px] border-gray-900">
         
         <header className="bg-[#115e59] text-white px-4 py-4 flex items-center justify-between shadow-md z-10">
-          <button className="p-1 hover:bg-white/10 rounded-lg transition-colors" aria-label="Menu" dir="ltr">
+          <button 
+            onClick={() => setIsSidebarOpen(true)}
+            className="p-1 hover:bg-white/10 rounded-lg transition-colors" 
+            aria-label="Menu" 
+            dir="ltr"
+          >
             <Menu size={28} />
           </button>
           
@@ -59,8 +82,13 @@ export default function Dashboard() {
             حسابات بلس - إدارة المخزن
           </h1>
           
-          <button className="p-1 hover:bg-white/10 rounded-lg transition-colors" aria-label="Add" dir="ltr">
-            <Plus size={32} strokeWidth={2.5} />
+          <button 
+            onClick={() => navigate('/login')} 
+            className="p-1 hover:bg-white/10 rounded-lg transition-colors" 
+            aria-label="Account" 
+            dir="ltr"
+          >
+            <User size={28} strokeWidth={2.5} />
           </button>
         </header>
 
@@ -116,6 +144,65 @@ export default function Dashboard() {
             مشاركة التطبيق صدقة لعل الله ينفعنا واياكم بها ، اضغط هنا
           </button>
         </footer>
+
+        {/* Sidebar Overlay */}
+        {isSidebarOpen && (
+          <div 
+            className="absolute inset-0 bg-black/50 z-40 transition-opacity"
+            onClick={() => setIsSidebarOpen(false)}
+          />
+        )}
+
+        {/* Sidebar Panel */}
+        <div 
+          className={`absolute top-0 right-0 h-full w-[80%] max-w-[320px] bg-white z-50 transform transition-transform duration-300 ease-in-out flex flex-col shadow-2xl ${
+            isSidebarOpen ? 'translate-x-0' : 'translate-x-full'
+          }`}
+        >
+          <div className="bg-[#115e59] text-white p-4 flex items-center justify-between shadow-md">
+            <h2 className="font-bold text-lg">القائمة الرئيسية</h2>
+            <button onClick={() => setIsSidebarOpen(false)} className="p-1 hover:bg-white/20 rounded-lg transition-colors">
+              <X size={24} />
+            </button>
+          </div>
+
+          <div className="flex-1 overflow-y-auto pb-6">
+            {/* Group 1 */}
+            <div className="py-2">
+              <SidebarItem icon={<Edit size={18}/>} text="تعديل فاتورة بيع" />
+              <SidebarItem icon={<Edit size={18}/>} text="تعديل فاتورة شراء" />
+              <SidebarItem icon={<Users size={18}/>} text="ذمم العملاء | تسديد" />
+              <SidebarItem icon={<Truck size={18}/>} text="ذمم الموردين | تسديد" />
+            </div>
+
+            {/* Group 2 */}
+            <div className="border-t border-gray-100 py-2">
+              <h3 className="px-4 py-2 text-xs font-bold text-gray-400 uppercase tracking-wider">البيانات</h3>
+              <SidebarItem icon={<Download size={18}/>} text="إنشاء نسخة احتياطية" />
+              <SidebarItem icon={<Upload size={18}/>} text="استعادة نسخة احتياطية" />
+              <SidebarItem icon={<Trash2 size={18}/>} text="حذف بيانات" onClick={() => navigate('/settings')} textClassName="text-red-600" iconClassName="text-red-600" />
+            </div>
+
+            {/* Group 3 */}
+            <div className="border-t border-gray-100 py-2">
+              <h3 className="px-4 py-2 text-xs font-bold text-gray-400 uppercase tracking-wider">الاعدادات</h3>
+              <SidebarItem icon={<SettingsIcon size={18}/>} text="اعدادات النظام" onClick={() => navigate('/settings')} />
+              <SidebarItem icon={<Globe size={18}/>} text="لغة التطبيق" />
+              <SidebarItem icon={<Printer size={18}/>} text="الطباعة" />
+            </div>
+
+            {/* Group 4 */}
+            <div className="border-t border-gray-100 py-2">
+              <h3 className="px-4 py-2 text-xs font-bold text-gray-400 uppercase tracking-wider">عن التطبيق</h3>
+              <SidebarItem icon={<Info size={18}/>} text="عن التطبيق" />
+              <SidebarItem icon={<Star size={18}/>} text="قيم التطبيق" />
+              <SidebarItem icon={<Share2 size={18}/>} text="مشاركة التطبيق" />
+              <SidebarItem icon={<Shield size={18}/>} text="سياسة الخصوصية" />
+              <SidebarItem icon={<HelpCircle size={18}/>} text="المساعدة" />
+              <SidebarItem icon={<Phone size={18}/>} text="تواصل معنا" />
+            </div>
+          </div>
+        </div>
 
       </div>
     </div>

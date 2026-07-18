@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { ArrowRight, Plus, Trash2, X, Minus, ShoppingCart, Printer, MessageCircle, FileText } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { Sale, Product, Client, CartItem, STORAGE_KEYS, getData, saveData, updateData, deleteData, getAppSettings } from '../utils/storage';
+import { Sale, Product, Client, CartItem, STORAGE_KEYS, getData, saveData, updateData, deleteData, getAppSettings, generateUUID, Bank } from '../utils/storage';
 
 const getPhonePrefix = (currency: string) => {
   if (currency.includes('سوداني')) return '+249';
@@ -15,18 +15,17 @@ const getPhonePrefix = (currency: string) => {
 
 export default function Sales() {
   const navigate = useNavigate();
-  const { currency, banks } = getAppSettings();
+  const [currency, setCurrency] = useState('جنيه سوداني');
+  const [banks, setBanks] = useState<Bank[]>([]);
   const phonePrefix = getPhonePrefix(currency);
   
   const [sales, setSales] = useState<Sale[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [clients, setClients] = useState<Client[]>([]);
   
-  // Modals State
   const [isPosModalOpen, setIsPosModalOpen] = useState(false);
   const [invoiceModalData, setInvoiceModalData] = useState<Sale | null>(null);
   
-  // POS Form State
   const [cart, setCart] = useState<CartItem[]>([]);
   const [selectedProductId, setSelectedProductId] = useState('');
   
@@ -36,19 +35,28 @@ export default function Sales() {
   const [newClientPhone, setNewClientPhone] = useState('');
   
   const [paymentMethod, setPaymentMethod] = useState<'cash' | 'credit' | 'bank'>('cash');
-  const [bankName, setBankName] = useState(banks.length > 0 ? banks[0].name : '');
+  const [bankName, setBankName] = useState('');
 
   useEffect(() => {
+    getAppSettings().then(settings => {
+      setCurrency(settings.currency);
+      setBanks(settings.banks);
+      if (settings.banks.length > 0) setBankName(settings.banks[0].name);
+    });
     loadData();
   }, []);
 
-  const loadData = () => {
-    setSales(getData<Sale>(STORAGE_KEYS.SALES));
-    setProducts(getData<Product>(STORAGE_KEYS.PRODUCTS));
-    setClients(getData<Client>(STORAGE_KEYS.CLIENTS));
+  const loadData = async () => {
+    const [s, p, c] = await Promise.all([
+      getData<Sale>(STORAGE_KEYS.SALES),
+      getData<Product>(STORAGE_KEYS.PRODUCTS),
+      getData<Client>(STORAGE_KEYS.CLIENTS)
+    ]);
+    setSales(s);
+    setProducts(p);
+    setClients(c);
   };
 
-  // --- POS Logic ---
   const handleOpenPos = () => {
     setCart([]);
     setSelectedProductId(products.length > 0 ? products[0].id : '');
@@ -95,7 +103,7 @@ export default function Sales() {
           alert('لا توجد كمية كافية في المخزن!');
           return item;
         }
-        if (newQty <= 0) return item; // Handled by remove button
+        if (newQty <= 0) return item;
         return { ...item, quantity: newQty };
       }
       return item;
@@ -108,14 +116,13 @@ export default function Sales() {
 
   const cartTotal = cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
 
-  const handleSaveSale = (e: React.FormEvent) => {
+  const handleSaveSale = async (e: React.FormEvent) => {
     e.preventDefault();
     if (cart.length === 0) {
       alert('عربة التسوق فارغة!');
       return;
     }
 
-    // Determine Client Info
     let finalClientName = 'عميل نقدي';
     let finalClientPhone = '';
 
@@ -138,7 +145,7 @@ export default function Sales() {
     }
 
     const newSale: Sale = {
-      id: Date.now().toString(),
+      id: generateUUID(),
       items: cart,
       totalAmount: cartTotal,
       date: new Date().toISOString(),
@@ -148,54 +155,47 @@ export default function Sales() {
       bankName: paymentMethod === 'bank' ? bankName : undefined,
     };
 
-    // Save Sale
-    saveData<Sale>(STORAGE_KEYS.SALES, newSale);
+    await saveData<Sale>(STORAGE_KEYS.SALES, newSale);
     
-    // Deduct from Inventory
-    cart.forEach(cartItem => {
+    for (const cartItem of cart) {
       const product = products.find(p => p.id === cartItem.productId);
       if (product) {
-        updateData<Product>(STORAGE_KEYS.PRODUCTS, product.id, { quantity: product.quantity - cartItem.quantity });
+        await updateData<Product>(STORAGE_KEYS.PRODUCTS, product.id, { quantity: product.quantity - cartItem.quantity });
       }
-    });
+    }
     
-    loadData();
+    await loadData();
     setIsPosModalOpen(false);
-    setInvoiceModalData(newSale); // Show invoice immediately after sale
+    setInvoiceModalData(newSale);
   };
 
-  const handleDelete = (sale: Sale) => {
+  const handleDelete = async (sale: Sale) => {
     if (window.confirm('هل أنت متأكد من حذف الفاتورة؟ (سيتم إرجاع الكميات للمخزن)')) {
-      // Return to Inventory
       if (sale.items) {
-        sale.items.forEach(item => {
+        for (const item of sale.items) {
           const product = products.find(p => p.id === item.productId);
           if (product) {
-            updateData<Product>(STORAGE_KEYS.PRODUCTS, product.id, { quantity: product.quantity + item.quantity });
+            await updateData<Product>(STORAGE_KEYS.PRODUCTS, product.id, { quantity: product.quantity + item.quantity });
           }
-        });
+        }
       } else if (sale.productId && sale.quantity) {
-        // Legacy support
         const product = products.find(p => p.id === sale.productId);
         if (product) {
-          updateData<Product>(STORAGE_KEYS.PRODUCTS, product.id, { quantity: product.quantity + sale.quantity });
+          await updateData<Product>(STORAGE_KEYS.PRODUCTS, product.id, { quantity: product.quantity + sale.quantity });
         }
       }
       
-      deleteData<Sale>(STORAGE_KEYS.SALES, sale.id);
-      loadData();
+      await deleteData<Sale>(STORAGE_KEYS.SALES, sale.id);
+      await loadData();
     }
   };
 
-  // --- Invoice Helpers ---
   const getProductName = (id: string) => {
     const prod = products.find(p => p.id === id);
     return prod ? prod.name : 'منتج محذوف';
   };
 
-  const handlePrint = () => {
-    window.print();
-  };
+  const handlePrint = () => window.print();
 
   const handleWhatsApp = (sale: Sale) => {
     let text = `*فاتورة مبيعات - حسابات بلس*\n`;
@@ -209,7 +209,7 @@ export default function Sales() {
       sale.items.forEach(item => {
         text += `- ${item.name} (الكمية: ${item.quantity}) = ${item.price * item.quantity} ${currency}\n`;
       });
-    } else if (sale.productId) { // Legacy
+    } else if (sale.productId) {
       text += `- ${getProductName(sale.productId)} (الكمية: ${sale.quantity}) = ${sale.totalAmount} ${currency}\n`;
     }
     
@@ -224,7 +224,6 @@ export default function Sales() {
     <div className="min-h-screen bg-gray-200 flex justify-center items-center p-0 sm:p-4 print:bg-white print:p-0">
       <div className="w-full h-[100dvh] sm:h-[850px] max-w-[400px] bg-gray-50 sm:rounded-3xl sm:shadow-2xl overflow-hidden flex flex-col relative border-x-0 sm:border-x-[8px] sm:border-y-[16px] border-gray-900 print:border-none print:shadow-none print:h-auto print:max-w-none print:rounded-none">
         
-        {/* Header - Hidden in Print */}
         <header className="bg-[#115e59] text-white px-4 py-4 flex items-center justify-between shadow-md z-10 print:hidden">
           <button onClick={() => navigate('/')} className="p-1 hover:bg-white/10 rounded-lg transition-colors" aria-label="Back">
             <ArrowRight size={28} />
@@ -235,7 +234,6 @@ export default function Sales() {
           </button>
         </header>
 
-        {/* Main List - Hidden in Print */}
         <main className="flex-1 overflow-y-auto p-4 print:hidden">
           {sales.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-full text-gray-400">
@@ -269,7 +267,6 @@ export default function Sales() {
           )}
         </main>
 
-        {/* POS Modal (Add Sale) */}
         {isPosModalOpen && (
           <div className="absolute inset-0 bg-gray-50 z-40 flex flex-col print:hidden animate-in slide-in-from-bottom-full duration-300 overflow-x-hidden max-w-full">
             <div className="bg-[#115e59] px-4 py-4 flex justify-between items-center text-white shadow-md">
@@ -281,7 +278,6 @@ export default function Sales() {
             
             <div className="flex-1 overflow-y-auto p-4 space-y-5">
               
-              {/* Client Section */}
               <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100">
                 <h3 className="font-bold text-gray-700 mb-3 text-sm">بيانات العميل</h3>
                 <div className="flex gap-2 mb-3 bg-gray-100 p-1 rounded-lg">
@@ -313,7 +309,6 @@ export default function Sales() {
                 )}
               </div>
 
-              {/* Payment Method Section */}
               <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100">
                 <h3 className="font-bold text-gray-700 mb-3 text-sm">طريقة الدفع</h3>
                 <div className="grid grid-cols-3 gap-2 mb-3">
@@ -331,7 +326,6 @@ export default function Sales() {
                 )}
               </div>
 
-              {/* Add Product Section */}
               <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100">
                 <h3 className="font-bold text-gray-700 mb-3 text-sm">إضافة منتجات للفاتورة</h3>
                 <div className="flex gap-2">
@@ -345,7 +339,6 @@ export default function Sales() {
                 </div>
               </div>
 
-              {/* Cart Items */}
               {cart.length > 0 && (
                 <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100">
                   <h3 className="font-bold text-gray-700 mb-3 text-sm">محتويات الفاتورة</h3>
@@ -372,7 +365,6 @@ export default function Sales() {
               )}
             </div>
 
-            {/* POS Footer (Total & Save) */}
             <div className="bg-white p-4 border-t border-gray-200 shadow-[0_-4px_10px_rgba(0,0,0,0.05)]">
               <div className="flex justify-between items-center mb-4">
                 <span className="font-bold text-gray-600">الإجمالي الكلي:</span>
@@ -385,12 +377,10 @@ export default function Sales() {
           </div>
         )}
 
-        {/* Invoice Modal (View/Print/Share) */}
         {invoiceModalData && (
           <div className="absolute inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm print:static print:bg-white print:p-0 print:block">
             <div className="bg-white rounded-2xl w-full max-w-sm shadow-2xl overflow-hidden flex flex-col max-h-[90vh] print:max-h-none print:shadow-none print:w-full print:max-w-none print:rounded-none">
               
-              {/* Invoice Header Actions - Hidden in Print */}
               <div className="bg-gray-100 px-4 py-3 flex justify-between items-center border-b border-gray-200 print:hidden">
                 <h2 className="font-bold text-gray-700 text-sm">عرض الفاتورة</h2>
                 <button onClick={() => setInvoiceModalData(null)} className="hover:bg-gray-200 p-1 rounded-md transition-colors text-gray-600">
@@ -398,7 +388,6 @@ export default function Sales() {
                 </button>
               </div>
 
-              {/* Printable Invoice Area */}
               <div className="p-6 overflow-y-auto flex-1 bg-white" id="printable-invoice">
                 <div className="text-center mb-6 border-b border-gray-200 pb-4">
                   <h1 className="text-2xl font-bold text-gray-800 mb-1">حسابات بلس</h1>
@@ -430,7 +419,6 @@ export default function Sales() {
                         </tr>
                       ))
                     ) : (
-                      // Legacy Support
                       <tr className="border-b border-gray-100">
                         <td className="py-2 text-right">{getProductName(invoiceModalData.productId!)}</td>
                         <td className="py-2 text-center">{invoiceModalData.quantity}</td>
@@ -450,7 +438,6 @@ export default function Sales() {
                 </div>
               </div>
 
-              {/* Invoice Footer Actions - Hidden in Print */}
               <div className="p-4 bg-gray-50 border-t border-gray-200 flex gap-3 print:hidden">
                 <button onClick={handlePrint} className="flex-1 bg-gray-800 text-white font-bold py-2.5 rounded-xl hover:bg-gray-700 transition-colors flex justify-center items-center gap-2">
                   <Printer size={18} /> طباعة
